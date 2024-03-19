@@ -98,13 +98,15 @@ y_i|\pi_i  &\sim \mbox{Bern}(\pi_i) \\
 \end{aligned}
 $$
 
-I compute the logistic regression with two methods:
+I compute the logistic regression with two methods, the first method: 
 
 ```{r}
 model <- glm(voted_for ~ gender + educ, data = ces2020, family = binomial)
 summary(model)
 ```
 
+
+the second method: 
 ```{r}
 #| echo: false
 #| warning: false
@@ -139,8 +141,10 @@ modelsummary(
   list(
     "Support Biden" = political_preferences
   ),
-  statistic = "mad"
-  )
+  statistic = "mad",
+  gof_omit = ".*" 
+)
+
 ```
 
 
