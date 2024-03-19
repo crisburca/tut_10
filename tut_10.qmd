@@ -1,0 +1,151 @@
+---
+title: "tutorial 8"
+format: pdf
+editor: visual
+---
+
+```{r, include = FALSE}
+library(dplyr)
+library(dataverse)
+library(rstanarm)
+library(modelsummary)
+library(readr)
+library(forcats)
+```
+
+
+```{r} 
+#| include: false
+
+ces2020 <-
+  get_dataframe_by_name(
+    filename = "CES20_Common_OUTPUT_vv.csv",
+    dataset = "10.7910/DVN/E9N6PH",
+    server = "dataverse.harvard.edu",
+    .f = read_csv
+  ) |>
+  select(votereg, CC20_410, gender, educ)
+
+write_csv(ces2020, "ces2020.csv")
+
+```
+Data taken from: https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/E9N6PH
+We take this data and try to predict if an individual has voted for Biden or Trump in the 2020 election based on sex and gender. 
+
+To create a simplified model of Nate Cohn, I filter the variables voted_for, gender, and educ for the regression. The following is a glimpse of the data: 
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+ces2020 <-
+  read_csv(
+    "ces2020.csv",
+    col_types =
+      cols(
+        "CC20_410" = col_integer(),
+        "gender" = col_integer(), 
+        "educ" = col_integer()
+      )
+  )
+
+ces2020 <-
+  ces2020 |>
+  filter(votereg == 1,
+         CC20_410 %in% c(1, 2)) |>
+  mutate(
+    voted_for = if_else(CC20_410 == 1, "Biden", "Trump"),
+    voted_for = as_factor(voted_for),
+    gender = if_else(gender == 1, "Male", "Female"),
+    education = case_when(
+      educ == 1 ~ "No HS",
+      educ == 2 ~ "High school graduate",
+      educ == 3 ~ "Some college",
+      educ == 4 ~ "2-year",
+      educ == 5 ~ "4-year",
+      educ == 6 ~ "Post-grad"
+    ),
+    education = factor(
+      education,
+      levels = c(
+        "No HS",
+        "High school graduate",
+        "Some college",
+        "2-year",
+        "4-year",
+        "Post-grad"
+      )
+    )
+  ) |>
+  select(voted_for, gender, educ)
+
+ces2020
+
+```
+
+
+We are interested in predicting the vote of an individual based on gender and education. 
+The variable is modeled by the following logistic regression: 
+
+$$
+\begin{aligned} 
+y_i|\pi_i  &\sim \mbox{Bern}(\pi_i) \\
+\mbox{logit}(\pi_i) &= \beta_0 + \beta_1 \times \mbox{sex}_i + \beta_2\times \mbox{education}_i\\
+\beta_0 &\sim \mbox{Normal}(0, 2.5) \\
+\beta_1 &\sim \mbox{Normal}(0, 2.5) \\
+\beta_2 &\sim \mbox{Normal}(0, 2.5)
+\end{aligned}
+$$
+
+I compute the logistic regression with two methods:
+
+```{r}
+model <- glm(voted_for ~ gender + educ, data = ces2020, family = binomial)
+summary(model)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+set.seed(853)
+
+ces2020_reduced <- 
+  ces2020 |> 
+  slice_sample(n = 1000)
+
+political_preferences <-
+  stan_glm(
+    voted_for ~ gender + educ,
+    data = ces2020_reduced,
+    family = binomial(link = "logit"),
+    prior = normal(location = 0, scale = 2.5, autoscale = TRUE),
+    prior_intercept = 
+      normal(location = 0, scale = 2.5, autoscale = TRUE),
+    seed = 853
+  )
+
+saveRDS(
+  political_preferences,
+  file = "political_preferences.rds"
+)
+
+political_preferences <-
+  readRDS(file = "political_preferences.rds")
+
+modelsummary(
+  list(
+    "Support Biden" = political_preferences
+  ),
+  statistic = "mad"
+  )
+```
+
+
+The reason we choose a logistic regression model to predict a variable such as vote for Biden vs Trump is becuase the variable of interest is a binary outcome. Logistic regression is design for modelling the odds of a particular event happening, where there is are only two outcomes-- in this scenario, the voter either votes for Biden or Trump. Poisson or negative binomial regression is designed for count data, where the Poisson distribution specializes in the number of times an event occurs, where the outcome is a count that can range form zero to infinity. Negative binomial regression is used when there is over dispersion in the data set, by considering the variance as a variable based on mean, and introducing an extra term that allows variance to increase with the mean. Thus, a logisitc regression is the best fitted regression model for the scenario.
+
+
+
+
